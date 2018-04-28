@@ -1,0 +1,41 @@
+#! /usr/local/bin/bzt
+---
+
+scenarios:
+  get-requests:
+   # default-address:
+   requests:
+     - url: /healthcheck
+       method: GET
+       label: healthcheck
+
+execution:
+ concurrency: 10
+ ramp-up: 0s
+ hold-for: 30s
+ scenario: get-requests
+
+reporting:
+  - module: blazemeter
+    test: api
+  - module: junit-xml
+    filename: report.xml
+    data-source: pass-fail
+  - module: passfail
+    criteria:
+    - avg-rt of healthcheck>200ms for 3s, continue as failed
+    - p90>300ms for 3s, continue as failed
+    - failures>5% for 5s, continue as failed
+    - failures>50% for 10s, stop as failed
+
+modules:
+  blazemeter:
+    report-name: api
+    test: perf-test
+    project: api
+    browser-open: false
+  console:
+    disable: true
+
+settings:
+  check-interval: 5

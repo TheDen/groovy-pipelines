@@ -1,0 +1,56 @@
+#!/usr/bin/env groovy
+
+REPORTURL = ''
+
+node('taurus-Agent') {
+
+  try {
+    stage('RUN QA') {
+        checkout scm
+        sh("bzt -o modules.blazemeter.report-name=\"build ${env.BUILD_NUMBER}\" -o scenarios.get-requests.default-address=${params.DOMAIN} performance-test.yml")
+        REPORTURL = sh(returnStdout: true, script: "cat report.xml | grep -o \"BlazeMeter report link:.*\" | grep -o \"https:.*\" | uniq").trim()
+    }
+  }
+
+  catch (e) {
+    // If there was an exception thrown, the build fails
+    REPORTURL = sh(returnStdout: true, script: "cat report.xml | grep -o \"BlazeMeter report link:.*\" | grep -o \"https:.*\" | uniq").trim()
+    currentBuild.result = "FAILED"
+      throw e
+  } finally {
+    // Success or failure, always send notifications
+    notifyBuild(currentBuild.result)
+  }
+}
+
+def notifyBuild(String buildStatus = 'STARTED') {
+  // build status of null means successful
+  buildStatus =  buildStatus ?: 'SUCCESSFUL'
+
+    def colorName = 'RED'
+    def colorCode = 'danger'
+
+    // Grab the committer
+    def BUILDID = env.BUILD_ID.toInteger()
+    def GITCOMMITER = sh(returnStdout: true, script: "git show -s --pretty=%an").trim()
+    def GITCOMMIT = sh(returnStdout: true, script: "git log --format=%B -n 1 \$(git rev-parse HEAD)").trim()
+
+    def subject = "${buildStatus}: ${env.JOB_NAME} [#${env.BUILD_NUMBER}]"
+
+    def summary = "<${env.BUILD_URL}|${subject}> \n ${GITCOMMITER}: ${GITCOMMIT}\n <${REPORTURL}|BLAZEMETER REPORT>"
+
+    // Override default values based on build status
+    if (buildStatus == 'STARTED') {
+      color = 'YELLOW'
+        colorCode = 'warning'
+    } else if (buildStatus == 'SUCCESSFUL') {
+      color = 'GREEN'
+        colorCode = 'good'
+    } else {
+      color = 'RED'
+        colorCode = 'danger'
+    }
+
+  // Send slack notification
+  slackSend channel: '#CI', color: colorCode, message: summary, teamDomain: 'teamdomain'
+}
